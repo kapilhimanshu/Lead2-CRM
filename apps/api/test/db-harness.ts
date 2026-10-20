@@ -10,9 +10,19 @@ export async function database() {
     "utf8",
   ).replace("CREATE EXTENSION IF NOT EXISTS pgcrypto;", "");
   await pg.exec(schema);
-  await pg.exec(
-    readFileSync(resolve(process.cwd(), "db/migrations/003-lead2.sql"), "utf8"),
-  );
+
+  const migrations = [
+    "003-lead2.sql",
+    "004-recurring-tasks.sql",
+    "005-mfa.sql",
+    "006-webhooks.sql",
+    "007-tags.sql",
+  ];
+  for (const m of migrations) {
+    const sql = readFileSync(resolve(process.cwd(), "db/migrations", m), "utf8");
+    await pg.exec(sql);
+  }
+
   let tail = Promise.resolve();
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
     const work = tail.then(fn, fn);
