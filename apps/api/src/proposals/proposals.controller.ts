@@ -25,6 +25,41 @@ export class ProposalsController {
   @Get() list(@CurrentUser() u: any) {
     return this.svc.list(u);
   }
+  @Get("product-types") productTypes(@CurrentUser() u: any) {
+    return this.svc.productTypes(u);
+  }
+  @Post("product-types") createProductType(
+    @CurrentUser() u: any,
+    @Body() b: any,
+  ) {
+    return this.svc.saveProductType(u, b);
+  }
+  @Patch("product-types/:id") editProductType(
+    @CurrentUser() u: any,
+    @Param("id") id: string,
+    @Body() b: any,
+  ) {
+    return this.svc.saveProductType(u, b, id);
+  }
+  @Get("product-master") productMaster(@CurrentUser() u: any) {
+    return this.svc.productMaster(u);
+  }
+  @Post("product-master") createProductMaster(
+    @CurrentUser() u: any,
+    @Body() b: any,
+  ) {
+    return this.svc.saveProductMaster(u, b);
+  }
+  @Patch("product-master/:id") editProductMaster(
+    @CurrentUser() u: any,
+    @Param("id") id: string,
+    @Body() b: any,
+  ) {
+    return this.svc.saveProductMaster(u, b, id);
+  }
+  @Get("cpq-analytics") cpqAnalytics(@CurrentUser() u: any) {
+    return this.svc.cpqAnalytics(u);
+  }
   @Get("commercials") catalogs(@CurrentUser() u: any) {
     return this.svc.catalogs(u);
   }
@@ -76,7 +111,7 @@ export class ProposalsController {
     );
     res.type("html").send(html);
   }
-  
+
   @Get(":id/pdf") async generatePdf(
     @CurrentUser() u: any,
     @Param("id") id: string,
@@ -85,7 +120,10 @@ export class ProposalsController {
     const html = await this.svc.document(u, id);
     const pdfBuffer = await this.pdfSvc.generatePdf(html);
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="proposal-${id}.pdf"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="proposal-${id}.pdf"`,
+    );
     res.send(pdfBuffer);
   }
 }

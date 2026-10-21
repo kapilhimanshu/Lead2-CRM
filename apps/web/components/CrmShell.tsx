@@ -51,20 +51,33 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
 
   if (!u) return <Loading />;
 
+  const isAdmin =
+    u.roleCode === "client_super_admin" ||
+    can(u, "commercial.manage") ||
+    can(u, "template.manage");
+
   const links = [
     { name: t("overview", "Overview"), href: "/dashboard", icon: LayoutDashboard },
     { name: t("leads", "Leads"), href: "/leads", icon: UsersRound },
     { name: t("pipeline", "Pipeline"), href: "/pipeline", icon: Columns3 },
     { name: t("tasks", "Tasks"), href: "/tasks", icon: CheckSquare2 },
-    { name: t("proposals", "Proposals"), href: "/proposals", icon: FileText },
+    ...(!isAdmin
+      ? [
+          { name: t("commercials", "Commercials"), href: "/commercials", icon: BookOpen },
+          { name: t("proposals", "Proposals"), href: "/proposals", icon: FileText },
+        ]
+      : []),
   ];
 
   const setup = [
     ...(can(u, "team.manage") || can(u, "user.manage")
       ? [{ name: t("team_access", "Team & access"), href: "/team", icon: UsersRound }]
       : []),
-    ...(can(u, "commercial.manage") || can(u, "template.manage")
-      ? [{ name: t("commercials", "Commercials"), href: "/commercials", icon: BookOpen }]
+    ...(isAdmin
+      ? [
+          { name: t("commercials", "Commercials"), href: "/commercials", icon: BookOpen },
+          { name: t("proposals", "Proposals"), href: "/proposals", icon: FileText },
+        ]
       : []),
     ...(can(u, "pipeline.manage")
       ? [{ name: t("workspace_settings", "Workspace settings"), href: "/admin", icon: Settings2 }]
