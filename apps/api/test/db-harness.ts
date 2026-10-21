@@ -18,6 +18,7 @@ export async function database() {
     "006-webhooks.sql",
     "007-tags.sql",
     "008-user-email-settings.sql",
+    "009-billing-and-payments.sql",
   ];
   for (const m of migrations) {
     const sql = readFileSync(resolve(process.cwd(), "db/migrations", m), "utf8");

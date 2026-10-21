@@ -11,6 +11,7 @@ import { ProposalsModule } from "./proposals/proposals.module";
 import { CommonModule } from "./common/common.module";
 import { MailModule } from "./mail/mail.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
+import { BillingModule } from "./billing/billing.module";
 import { HealthController } from "./health/health.controller";
 
 @Module({
@@ -31,6 +32,7 @@ import { HealthController } from "./health/health.controller";
     DashboardModule,
     UsersModule,
     ProposalsModule,
+    BillingModule,
   ],
 })
 export class AppModule {}

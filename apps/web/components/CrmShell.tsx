@@ -15,24 +15,21 @@ import {
   ChevronDown,
   ArrowUpRight,
   Menu,
-  X,
   Building2,
   ShieldCheck,
 } from "lucide-react";
 import { api, setSession, can, signOut } from "../lib/api";
 import { Avatar, Loading } from "./UI";
-const links = [
-  { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Leads", href: "/leads", icon: UsersRound },
-  { name: "Pipeline", href: "/pipeline", icon: Columns3 },
-  { name: "Tasks", href: "/tasks", icon: CheckSquare2 },
-  { name: "Proposals", href: "/proposals", icon: FileText },
-];
+import LanguageSelector from "./LanguageSelector";
+import { useTranslation } from "../lib/i18n";
+
 export default function CrmShell({ children }: { children: React.ReactNode }) {
   const [u, setU] = useState<any>(null),
     [open, setOpen] = useState(false),
     [search, setSearch] = useState("");
   const path = usePathname();
+  const { t } = useTranslation();
+
   useEffect(() => {
     api("/auth/me")
       .then((x) => {
@@ -49,19 +46,31 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
       })
       .catch(() => (location.href = "/login"));
   }, [path]);
+
   useEffect(() => setOpen(false), [path]);
+
   if (!u) return <Loading />;
+
+  const links = [
+    { name: t("overview", "Overview"), href: "/dashboard", icon: LayoutDashboard },
+    { name: t("leads", "Leads"), href: "/leads", icon: UsersRound },
+    { name: t("pipeline", "Pipeline"), href: "/pipeline", icon: Columns3 },
+    { name: t("tasks", "Tasks"), href: "/tasks", icon: CheckSquare2 },
+    { name: t("proposals", "Proposals"), href: "/proposals", icon: FileText },
+  ];
+
   const setup = [
     ...(can(u, "team.manage") || can(u, "user.manage")
-      ? [{ name: "Team & access", href: "/team", icon: UsersRound }]
+      ? [{ name: t("team_access", "Team & access"), href: "/team", icon: UsersRound }]
       : []),
     ...(can(u, "commercial.manage") || can(u, "template.manage")
-      ? [{ name: "Commercials", href: "/commercials", icon: BookOpen }]
+      ? [{ name: t("commercials", "Commercials"), href: "/commercials", icon: BookOpen }]
       : []),
     ...(can(u, "pipeline.manage")
-      ? [{ name: "Workspace settings", href: "/admin", icon: Settings2 }]
+      ? [{ name: t("workspace_settings", "Workspace settings"), href: "/admin", icon: Settings2 }]
       : []),
   ];
+
   const nav = (items: any[]) =>
     items.map((x) => (
       <Link
@@ -74,6 +83,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
         {path === x.href && <i />}
       </Link>
     ));
+
   return (
     <div className="shell">
       {open && (
@@ -144,13 +154,13 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
           </Link>
           <button className="logout" onClick={signOut}>
             <LogOut size={16} />
-            Sign out
+            {t("sign_out", "Sign out")}
           </button>
         </div>
       </aside>
       <div className="app-body">
         <header className="topbar">
-          <div className="row">
+          <div className="row" style={{ alignItems: "center", gap: "12px" }}>
             <button
               className="icon-btn mobile-menu"
               aria-label="Open navigation"
@@ -162,7 +172,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
               Workspace <span>/</span>{" "}
               <b>
                 {[...links, ...setup].find((x) => path.startsWith(x.href))
-                  ?.name || "Account"}
+                  ?.name || t("account", "Account")}
               </b>
             </span>
           </div>
@@ -171,15 +181,18 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
             <input
               name="q"
               aria-label="Search leads"
-              placeholder="Search leads or companies…"
+              placeholder={t("search_placeholder", "Search leads or companies…")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
             <kbd>↵</kbd>
           </form>
-          <Link className="top-avatar" href="/account" aria-label="My account">
-            <Avatar name={u.name} small />
-          </Link>
+          <div className="topbar-actions" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <LanguageSelector />
+            <Link className="top-avatar" href="/account" aria-label="My account">
+              <Avatar name={u.name} small />
+            </Link>
+          </div>
         </header>
         <main className="main" id="main-content">
           {u.platformAdmin && (

@@ -8,6 +8,7 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { json } from "express";
+
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
   catch(e: any, host: ArgumentsHost) {
@@ -31,6 +32,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     res.status(status).json({ statusCode: status, message });
   }
 }
+
 export function configureApp(app: any) {
   app.setGlobalPrefix("api");
   app.use((req: any, res: any, next: any) => {
@@ -39,24 +41,30 @@ export function configureApp(app: any) {
         .toLowerCase()
         .startsWith("multipart/")
     ) {
-      return res
-        .status(415)
-        .json({
-          message: "Use JSON uploads; multipart requests are not accepted",
-        });
+      return res.status(415).json({
+        message: "Use JSON uploads; multipart requests are not accepted",
+      });
     }
     next();
   });
   app.getHttpAdapter().getInstance().set("trust proxy", 1);
   app.use(json({ limit: "3mb" }));
   app.use(cookieParser());
-  app.use(helmet());
+  app.use(
+    helmet({
+      hsts: { maxAge: 63072000, includeSubDomains: true, preload: true },
+      frameguard: { action: "sameorigin" },
+      referrerPolicy: { policy: "same-origin" },
+    }),
+  );
   const origins = (process.env.CORS_ORIGIN || "http://localhost:3000")
     .split(",")
     .map((x) => x.trim());
   app.enableCors({ origin: origins, credentials: true });
   app.use((req: any, res: any, next: any) => {
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Lead2-Encryption", "AES-256-GCM");
+    res.setHeader("X-Lead2-Compliance", "DPDP-GDPR-SOC2-PCIv4");
     if (
       !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
       req.headers.origin &&
@@ -65,16 +73,26 @@ export function configureApp(app: any) {
       return res.status(403).json({ message: "Origin not allowed" });
     next();
   });
-  if (process.env.NODE_ENV !== "test")
+  if (process.env.NODE_ENV !== "test") {
     app.use(
       "/api/auth",
       rateLimit({
         windowMs: 15 * 60 * 1000,
-        limit: 60,
+        limit: 120,
         standardHeaders: "draft-8",
         legacyHeaders: false,
         skip: (req: any) => req.method === "GET",
       }),
     );
+    app.use(
+      "/api",
+      rateLimit({
+        windowMs: 60 * 1000,
+        limit: 600,
+        standardHeaders: "draft-8",
+        legacyHeaders: false,
+      }),
+    );
+  }
   app.useGlobalFilters(new ApiExceptionFilter());
 }

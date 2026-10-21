@@ -21,6 +21,8 @@ export class LeadsController {
 
   @Get() list(@CurrentUser() u: any, @Query() q: any) { return this.svc.list(u, q); }
   @Get("tags") listTags(@CurrentUser() u: any) { return this.svc.listTags(u); }
+  @Get("unallocated") getUnallocated(@CurrentUser() u: any) { return this.svc.getUnallocatedLeads(u); }
+  @Post("allocate-batch") allocateBatch(@CurrentUser() u: any, @Body() b: any) { return this.svc.allocateBatch(u, b); }
   @Post("tags") createTag(@CurrentUser() u: any, @Body() b: any) { return this.svc.upsertTag(u, b); }
   @Put("tags/:id") updateTag(@CurrentUser() u: any, @Param("id") id: string, @Body() b: any) { return this.svc.upsertTag(u, b, id); }
   @Get(":id") one(@CurrentUser() u: any, @Param("id") id: string) { return this.svc.one(u, id); }

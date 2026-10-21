@@ -450,13 +450,13 @@ export class LeadsService {
     requirePermission(u, "lead.write");
     if (!Array.isArray(rows) || rows.length > 1000)
       throw new BadRequestException("Import up to 1,000 rows per batch");
-    // BUG-06 FIX: single tenant transaction for the whole batch â€” lock tenant row once
     return this.db.tenant(u.tenantId!, u.sub, async (q) => {
       await q.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE", [u.tenantId]);
+      const users = (await q.query("SELECT id, name, email FROM users WHERE tenant_id=$1 AND active", [u.tenantId])).rows;
+      const isSalesMember = u.roleCode === "sales_member";
       const summary = { created: 0, duplicates: 0, errors: [] as any[] };
       for (const [i, row] of rows.entries()) {
         try {
-          // Call private create logic directly on the already-open tenant client
           const f = this.fields(row);
           f.name = v.str(f.name, "Lead name", 180);
           const pipe =
@@ -478,10 +478,22 @@ export class LeadsService {
           const ph = this.crypto.contactHash(f.phone),
             eh = this.crypto.contactHash(f.email);
           if (await this.duplicate(q, u, ph, eh)) { summary.duplicates++; continue; }
+
+          let ownerId: string | null = u.sub;
+          if (!isSalesMember) {
+            const rawRep = String(row.sales_rep || row.salesRep || row.owner || row.owner_email || row.rep_email || row.rep || "").trim().toLowerCase();
+            if (rawRep) {
+              const matched = users.find((usr: any) => usr.email.toLowerCase() === rawRep || usr.name.toLowerCase() === rawRep);
+              ownerId = matched ? matched.id : null;
+            } else {
+              ownerId = null; // Unallocated for admin upload without explicit rep
+            }
+          }
+
           const l = (
             await q.query(
               "INSERT INTO leads(tenant_id,pipeline_id,stage_id,owner_id,name,company,phone_enc,phone_hash,email_enc,email_hash,value,source,custom_fields,status,closed_at,last_activity_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,CASE WHEN $14='open' THEN NULL ELSE now() END,now()) RETURNING *",
-              [u.tenantId, pipe, stage.id, u.sub, f.name, f.company, this.crypto.encrypt(f.phone), ph, this.crypto.encrypt(f.email), eh, f.value, f.source, JSON.stringify(f.custom_fields || {}), stage.outcome],
+              [u.tenantId, pipe, stage.id, ownerId, f.name, f.company, this.crypto.encrypt(f.phone), ph, this.crypto.encrypt(f.email), eh, f.value, f.source, JSON.stringify(f.custom_fields || {}), stage.outcome],
             )
           ).rows[0];
           await q.query(
@@ -494,6 +506,52 @@ export class LeadsService {
         }
       }
       return summary;
+    });
+  }
+
+  async getUnallocatedLeads(u: RequestUser) {
+    requirePermission(u, "lead.read");
+    return this.db.tenant(u.tenantId!, u.sub, async (q) => {
+      const rows = (
+        await q.query(
+          `SELECT l.id, l.name, l.company, l.value, l.source, l.created_at, s.name stage_name, s.color stage_color
+           FROM leads l
+           JOIN pipeline_stages s ON s.id = l.stage_id
+           WHERE l.tenant_id = $1 AND l.status = 'open' AND l.owner_id IS NULL
+           ORDER BY l.created_at DESC LIMIT 200`,
+          [u.tenantId],
+        )
+      ).rows;
+      return rows;
+    });
+  }
+
+  async allocateBatch(u: RequestUser, b: any) {
+    requirePermission(u, "lead.write");
+    const allocations: { leadId: string; ownerId: string }[] = b.allocations || [];
+    if (!allocations.length) throw new BadRequestException("No allocations provided");
+
+    return this.db.tenant(u.tenantId!, u.sub, async (q) => {
+      const users = (await q.query("SELECT id, name FROM users WHERE tenant_id=$1", [u.tenantId])).rows;
+      let count = 0;
+      for (const item of allocations) {
+        if (!item.leadId || !item.ownerId) continue;
+        const owner = users.find((usr: any) => usr.id === item.ownerId);
+        if (!owner) continue;
+
+        await q.query(
+          "UPDATE leads SET owner_id=$1, last_activity_at=now(), updated_at=now() WHERE id=$2 AND tenant_id=$3",
+          [item.ownerId, item.leadId, u.tenantId],
+        );
+
+        await q.query(
+          `INSERT INTO activities(tenant_id, lead_id, user_id, type, body, occurred_at)
+           VALUES($1, $2, $3, 'system', $4, now())`,
+          [u.tenantId, item.leadId, u.sub, `Lead assigned to ${owner.name}`],
+        );
+        count++;
+      }
+      return { ok: true, allocatedCount: count };
     });
   }
 

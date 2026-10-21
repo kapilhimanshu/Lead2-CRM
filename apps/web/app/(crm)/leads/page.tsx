@@ -32,8 +32,12 @@ export default function Leads() {
     [transfer, setTransfer] = useState(false),
     [owner, setOwner] = useState(""),
     [importing, setImporting] = useState(false),
-    [offset, setOffset] = useState(0);
+    [offset, setOffset] = useState(0),
+    [allocateModal, setAllocateModal] = useState(false),
+    [allocations, setAllocations] = useState<Record<string, string>>({}),
+    [allocating, setAllocating] = useState(false);
   const file = useRef<HTMLInputElement>(null);
+  const promptedRef = useRef(false);
   const { data, error, setError, reload } = useResource(() =>
     Promise.all([
       api(
@@ -45,6 +49,7 @@ export default function Leads() {
       ),
       api("/pipelines"),
       api("/users"),
+      api("/leads/unallocated").catch(() => []),
     ]),
   );
   useEffect(() => {
@@ -61,6 +66,16 @@ export default function Leads() {
   useEffect(() => {
     if (data) void search(offset);
   }, [offset]);
+  useEffect(() => {
+    const unalloc = data?.[3] || [];
+    if (!promptedRef.current && unalloc.length > 0 && can(currentUser(), "lead.assign")) {
+      promptedRef.current = true;
+      const map: Record<string, string> = {};
+      unalloc.forEach((l: any) => { map[l.id] = ""; });
+      setAllocations(map);
+      setAllocateModal(true);
+    }
+  }, [data]);
   async function search(start = 0) {
     try {
       setSearchResult(
@@ -106,6 +121,8 @@ export default function Leads() {
             phone: r.phone || r.Phone,
             value: r.value || r.Value || 0,
             source: r.source || r.Source || "CSV",
+            ownerEmail: r.ownerEmail || r.repEmail || r["Rep Email"] || r["Owner Email"] || r.rep || r.owner || r["Sales Rep"] || r["Assigned Rep"],
+            ownerName: r.ownerName || r.repName || r["Rep Name"] || r["Owner Name"] || r["Sales Rep Name"],
           })),
         }),
       });
@@ -120,6 +137,7 @@ export default function Leads() {
             : ""
         }`,
       );
+      promptedRef.current = false;
       await refresh();
     } catch (e: any) {
       setError(e.message);
@@ -150,7 +168,7 @@ export default function Leads() {
     URL.revokeObjectURL(url);
   }
   if (!data && !error) return <Loading />;
-  const [base = [], pipes = [], users = []] = data || [],
+  const [base = [], pipes = [], users = [], unallocated = []] = data || [],
     leads = searchResult || base;
   return (
     <>
@@ -188,6 +206,48 @@ export default function Leads() {
       />
       <Notice message={error} onClose={() => setError("")} />
       <Notice message={notice} success onClose={() => setNotice("")} />
+      {can(currentUser(), "lead.assign") && unallocated.length > 0 && (
+        <div
+          className="card"
+          style={{
+            background: "#fffbeb",
+            border: "1px solid #fde68a",
+            padding: "16px 20px",
+            marginBottom: 20,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <span style={{ fontSize: 24, lineHeight: 1 }}>⚠️</span>
+            <div>
+              <b style={{ color: "#92400e", fontSize: 14 }}>
+                {unallocated.length} open lead{unallocated.length > 1 ? "s are" : " is"} not allocated yet.
+              </b>
+              <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#b45309" }}>
+                These open opportunities require a sales rep assignment to ensure prompt follow-up.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            style={{ background: "#d97706", borderColor: "#b45309", color: "#ffffff", whiteSpace: "nowrap" }}
+            onClick={() => {
+              const map: Record<string, string> = {};
+              unallocated.forEach((l: any) => {
+                map[l.id] = "";
+              });
+              setAllocations(map);
+              setAllocateModal(true);
+            }}
+          >
+            Allocate Now ({unallocated.length})
+          </button>
+        </div>
+      )}
       <div className="card">
         <div className="toolbar">
           <form

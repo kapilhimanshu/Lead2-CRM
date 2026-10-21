@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import {
   Building2,
   UsersRound,
+  CreditCard,
+  DollarSign,
   ShieldCheck,
   Clock3,
   Plus,
@@ -54,7 +56,9 @@ export default function Platform() {
     [note, setNote] = useState(""),
     [staffForm, setStaffForm] = useState(false),
     [staff, setStaff] = useState({ name: "", email: "", password: "" }),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [subEditing, setSubEditing] = useState<any>(null),
+    [subForm, setSubForm] = useState<any>({ seats: 5, billingCycle: "annual", status: "active", currency: "INR" });
   async function load(u?: any) {
     try {
       const current = u || me || (await api("/auth/me"));
@@ -75,6 +79,7 @@ export default function Platform() {
         current.roleCode === "lead2_engineer"
           ? api("/auth/super-admin/staff")
           : Promise.resolve([]),
+        api("/billing/super-admin/payments").catch(() => []),
       ]);
       setData(values);
     } catch (e: any) {
@@ -108,7 +113,7 @@ export default function Platform() {
     ) : (
       <Loading />
     );
-  const [summary, requests, audit, staffList] = data;
+  const [summary, requests, audit, staffList, clientPayments = []] = data;
   return (
     <div className="platform-shell">
       <header className="platform-head">
@@ -175,6 +180,12 @@ export default function Platform() {
           onClick={() => setTab("clients")}
         >
           Client workspaces
+        </button>
+        <button
+          className={tab === "payments" ? "active" : ""}
+          onClick={() => setTab("payments")}
+        >
+          Payments & Subscriptions
         </button>
         <button
           className={tab === "requests" ? "active" : ""}
@@ -300,6 +311,135 @@ export default function Platform() {
               text="Approve a workspace request to create the client’s workspace."
             />
           )}
+        </div>
+      )}
+      {tab === "payments" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div className="card">
+            <div className="card-head">
+              <div>
+                <h2>Client Workspace Subscriptions & Seat Allocation</h2>
+                <p className="subtle">Monitor active client subscription tiers, licensed rep seats, and billing cycles</p>
+              </div>
+            </div>
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Workspace</th>
+                    <th>Plan & Cycle</th>
+                    <th>Seats (Used / Total)</th>
+                    <th>Rate & Value</th>
+                    <th>Period End</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientPayments.map((p: any) => (
+                    <tr key={p.tenant_id}>
+                      <td>
+                        <b>{p.tenant_name}</b>
+                        <small>{p.tenant_slug}</small>
+                      </td>
+                      <td>
+                        <b style={{ textTransform: "capitalize" }}>{p.plan || "Standard"}</b>
+                        <small>{p.billing_cycle || "annual"}</small>
+                      </td>
+                      <td>
+                        <b>{p.active_users || 0} / {p.subscription_seats || p.seat_limit}</b>
+                        <small>{Math.max(0, (p.subscription_seats || p.seat_limit) - (p.active_users || 0))} available</small>
+                      </td>
+                      <td>
+                        <b>{p.currency || "INR"} {p.total_amount ? Number(p.total_amount).toLocaleString() : "—"}</b>
+                        <small>{p.unit_price ? `${p.currency} ${p.unit_price}/rep/mo` : "Standard agreement"}</small>
+                      </td>
+                      <td>{p.current_period_end ? date(p.current_period_end) : "Active"}</td>
+                      <td>
+                        <Badge tone={p.subscription_status === "active" ? "green" : "neutral"}>
+                          {p.subscription_status || "Active"}
+                        </Badge>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn small ghost"
+                          onClick={() => {
+                            setSubEditing(p);
+                            setSubForm({
+                              seats: p.subscription_seats || p.seat_limit || 5,
+                              billingCycle: p.billing_cycle || "annual",
+                              status: p.subscription_status || "active",
+                              currency: p.currency || "INR",
+                            });
+                          }}
+                        >
+                          Modify Access
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!clientPayments.length && (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
+                        No subscriptions found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <div>
+                <h2>Platform Revenue & Transaction Log</h2>
+                <p className="subtle">Client payments processed via Credit Card, UPI, and Digital Wallets</p>
+              </div>
+            </div>
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Client</th>
+                    <th>Reference</th>
+                    <th>Method</th>
+                    <th>Seats</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientPayments.flatMap((p: any) =>
+                    (p.recent_transactions || []).map((t: any) => ({ ...t, tenant_name: p.tenant_name }))
+                  ).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((tx: any) => (
+                    <tr key={tx.id}>
+                      <td>{date(tx.created_at)}</td>
+                      <td><b>{tx.tenant_name}</b></td>
+                      <td><code>{tx.reference}</code></td>
+                      <td>
+                        <span style={{ textTransform: "uppercase", fontSize: 11, fontWeight: 700 }}>
+                          {tx.payment_method}
+                        </span>
+                      </td>
+                      <td>{tx.seats} seats</td>
+                      <td><b>{tx.currency} {Number(tx.amount).toLocaleString()}</b></td>
+                      <td><Badge tone="green">{tx.status}</Badge></td>
+                    </tr>
+                  ))}
+                  {!clientPayments.some((p: any) => p.recent_transactions?.length) && (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
+                        No payment transactions recorded yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
       {tab === "requests" && (
