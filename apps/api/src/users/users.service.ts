@@ -1,4 +1,4 @@
-import {
+﻿import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -16,9 +16,11 @@ import {
   DEFAULT_AUTHORITY,
 } from "../common/permissions";
 import * as v from "../common/validation";
+import { CryptoService } from "../common/crypto.service";
+import { MailService } from "../mail/mail.service";
 @Injectable()
 export class UsersService {
-  constructor(private db: DbService) {}
+  constructor(private db: DbService, private crypto: CryptoService, private mail: MailService) {}
   async list(u: RequestUser) {
     return this.db.tenant(u.tenantId!, u.sub, async (q) => {
       const ids = await visibleUserIds(q, u);
@@ -195,7 +197,7 @@ export class UsersService {
         ).rows.length
       )
         throw new ConflictException(
-          "Reassign this manager’s reportees before changing to Sales Team Member",
+          "Reassign this managerâ€™s reportees before changing to Sales Team Member",
         );
       if (role.code === "client_super_admin" && manager)
         throw new BadRequestException("A Client Super Admin has no manager");
@@ -508,5 +510,104 @@ export class UsersService {
           )
         ).rows,
     );
+  }
+
+  async getEmailSettings(u: RequestUser) {
+    if (!u.tenantId) throw new ForbiddenException();
+    return this.db.tenant(u.tenantId, u.sub, async (q) => {
+      const row = (
+        await q.query(
+          "SELECT id, name, email, email_settings FROM users WHERE id=$1 AND tenant_id=$2",
+          [u.sub, u.tenantId],
+        )
+      ).rows[0];
+      if (!row) throw new NotFoundException("User not found");
+      const s = row.email_settings || {};
+      return {
+        senderName: s.senderName || row.name,
+        senderEmail: s.senderEmail || row.email,
+        smtpHost: s.smtpHost || "",
+        smtpPort: s.smtpPort || 587,
+        smtpSecure: !!s.smtpSecure,
+        smtpUser: s.smtpUser || "",
+        hasSmtpPass: !!s.smtpPass,
+      };
+    });
+  }
+
+  async updateEmailSettings(u: RequestUser, b: any) {
+    if (!u.tenantId) throw new ForbiddenException();
+    return this.db.tenant(u.tenantId, u.sub, async (q) => {
+      const row = (
+        await q.query(
+          "SELECT email_settings FROM users WHERE id=$1 AND tenant_id=$2",
+          [u.sub, u.tenantId],
+        )
+      ).rows[0];
+      if (!row) throw new NotFoundException("User not found");
+      const current = row.email_settings || {};
+
+      let smtpPass = current.smtpPass;
+      if (b.smtpPass && String(b.smtpPass).trim()) {
+        smtpPass = this.crypto.encrypt(String(b.smtpPass).trim());
+      } else if (b.clearSmtpPass) {
+        smtpPass = null;
+      }
+
+      const updated = {
+        senderName: b.senderName ? String(b.senderName).trim().slice(0, 100) : "",
+        senderEmail: b.senderEmail ? String(b.senderEmail).trim().toLowerCase() : "",
+        smtpHost: b.smtpHost ? String(b.smtpHost).trim() : "",
+        smtpPort: Number(b.smtpPort) || 587,
+        smtpSecure: !!b.smtpSecure,
+        smtpUser: b.smtpUser ? String(b.smtpUser).trim() : "",
+        smtpPass: smtpPass || null,
+      };
+
+      await q.query(
+        "UPDATE users SET email_settings=$1 WHERE id=$2 AND tenant_id=$3",
+        [JSON.stringify(updated), u.sub, u.tenantId],
+      );
+
+      return {
+        senderName: updated.senderName,
+        senderEmail: updated.senderEmail,
+        smtpHost: updated.smtpHost,
+        smtpPort: updated.smtpPort,
+        smtpSecure: updated.smtpSecure,
+        smtpUser: updated.smtpUser,
+        hasSmtpPass: !!updated.smtpPass,
+      };
+    });
+  }
+
+  async testEmailSettings(u: RequestUser, b: any) {
+    if (!u.tenantId) throw new ForbiddenException();
+    return this.db.tenant(u.tenantId, u.sub, async (q) => {
+      const row = (
+        await q.query(
+          "SELECT email_settings FROM users WHERE id=$1 AND tenant_id=$2",
+          [u.sub, u.tenantId],
+        )
+      ).rows[0];
+      const current = row?.email_settings || {};
+
+      let pass = b.smtpPass;
+      if (!pass && current.smtpPass) {
+        pass = this.crypto.decrypt(current.smtpPass);
+      }
+
+      if (!b.smtpHost || !b.smtpUser || !pass) {
+        throw new BadRequestException("Host, user and password are required to test connection");
+      }
+
+      return this.mail.testSmtpConnection({
+        host: b.smtpHost,
+        port: Number(b.smtpPort) || 587,
+        secure: !!b.smtpSecure,
+        user: b.smtpUser,
+        pass,
+      });
+    });
   }
 }

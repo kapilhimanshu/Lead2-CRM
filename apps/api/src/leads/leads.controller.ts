@@ -24,6 +24,9 @@ export class LeadsController {
   @Post("tags") createTag(@CurrentUser() u: any, @Body() b: any) { return this.svc.upsertTag(u, b); }
   @Put("tags/:id") updateTag(@CurrentUser() u: any, @Param("id") id: string, @Body() b: any) { return this.svc.upsertTag(u, b, id); }
   @Get(":id") one(@CurrentUser() u: any, @Param("id") id: string) { return this.svc.one(u, id); }
+  @Get(":id/email-draft") getDraft(@CurrentUser() u: any, @Param("id") id: string) { return this.svc.getEmailDraft(u, id); }
+  @Put(":id/email-draft") saveDraft(@CurrentUser() u: any, @Param("id") id: string, @Body() b: any) { return this.svc.saveEmailDraft(u, id, b); }
+  @Post(":id/send-email") sendEmail(@CurrentUser() u: any, @Param("id") id: string, @Body() b: any) { return this.svc.sendLeadEmail(u, id, b); }
   @Post("assign") assign(@CurrentUser() u: any, @Body() b: any) { return this.svc.assign(u, b); }
   @Post() create(@CurrentUser() u: any, @Body() b: any) { return this.svc.create(u, b); }
   @Post("import/rows") importRows(@CurrentUser() u: any, @Body() b: any) { return this.svc.importRows(u, b.rows || []); }
@@ -32,4 +35,3 @@ export class LeadsController {
   @Put(":id/tags") setTags(@CurrentUser() u: any, @Param("id") id: string, @Body() b: any) { return this.svc.setLeadTags(u, id, b.tagIds || []); }
   @Delete(":id") remove(@CurrentUser() u: any, @Param("id") id: string) { return this.svc.remove(u, id); }
 }
-

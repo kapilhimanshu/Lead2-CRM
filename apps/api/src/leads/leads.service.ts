@@ -1,4 +1,4 @@
-import {
+﻿import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { DbService, TenantClient } from "../db/db.service";
 import { CryptoService } from "../common/crypto.service";
+import { MailService } from "../mail/mail.service";
 import {
   requirePermission,
   hasPermission,
@@ -23,6 +24,7 @@ export class LeadsService {
   constructor(
     private db: DbService,
     private crypto: CryptoService,
+    private mail: MailService,
   ) {}
   private row(r: any) {
     const { phone_enc, email_enc, phone_hash, email_hash, ...rest } = r;
@@ -286,7 +288,7 @@ export class LeadsService {
       ).rows[0];
       if (!stage)
         throw new BadRequestException(
-          "Stage must belong to the lead’s pipeline",
+          "Stage must belong to the leadâ€™s pipeline",
         );
       this.required(stage, f);
       if (b.status && b.status !== stage.outcome)
@@ -361,7 +363,7 @@ export class LeadsService {
       !b.leadIds.length ||
       b.leadIds.length > 500
     )
-      throw new BadRequestException("Select 1–500 leads");
+      throw new BadRequestException("Select 1â€“500 leads");
     return this.db.tenant(u.tenantId!, u.sub, async (q) => {
       await q.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE", [
         u.tenantId,
@@ -448,7 +450,7 @@ export class LeadsService {
     requirePermission(u, "lead.write");
     if (!Array.isArray(rows) || rows.length > 1000)
       throw new BadRequestException("Import up to 1,000 rows per batch");
-    // BUG-06 FIX: single tenant transaction for the whole batch — lock tenant row once
+    // BUG-06 FIX: single tenant transaction for the whole batch â€” lock tenant row once
     return this.db.tenant(u.tenantId!, u.sub, async (q) => {
       await q.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE", [u.tenantId]);
       const summary = { created: 0, duplicates: 0, errors: [] as any[] };
@@ -495,7 +497,7 @@ export class LeadsService {
     });
   }
 
-  // ─── Tags ───────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Tags â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async listTags(u: RequestUser) {
     requirePermission(u, "lead.read");
     return this.db.tenant(u.tenantId!, u.sub, async (q) =>
@@ -533,6 +535,116 @@ export class LeadsService {
         );
       }
       return { ok: true };
+    });
+  }
+
+  async getEmailDraft(u: RequestUser, leadId: string) {
+    requirePermission(u, "lead.read");
+    return this.db.tenant(u.tenantId!, u.sub, async (q) => {
+      await requireVisibleLead(q, u, v.uuid(leadId));
+      const row = (
+        await q.query(
+          "SELECT id, subject, body, updated_at FROM lead_email_drafts WHERE tenant_id=$1 AND lead_id=$2 AND user_id=$3",
+          [u.tenantId, leadId, u.sub],
+        )
+      ).rows[0];
+      return row || { subject: "", body: "" };
+    });
+  }
+
+  async saveEmailDraft(u: RequestUser, leadId: string, b: any) {
+    requirePermission(u, "lead.write");
+    return this.db.tenant(u.tenantId!, u.sub, async (q) => {
+      await requireVisibleLead(q, u, v.uuid(leadId));
+      const subject = String(b.subject || "").trim();
+      const body = String(b.body || "").trim();
+      await q.query(
+        `INSERT INTO lead_email_drafts(tenant_id, lead_id, user_id, subject, body, updated_at)
+         VALUES($1, $2, $3, $4, $5, now())
+         ON CONFLICT (tenant_id, lead_id, user_id)
+         DO UPDATE SET subject=EXCLUDED.subject, body=EXCLUDED.body, updated_at=now()`,
+        [u.tenantId, leadId, u.sub, subject, body],
+      );
+      return { ok: true };
+    });
+  }
+
+  async sendLeadEmail(u: RequestUser, leadId: string, b: any) {
+    requirePermission(u, "lead.write");
+    return this.db.tenant(u.tenantId!, u.sub, async (q) => {
+      await requireVisibleLead(q, u, v.uuid(leadId));
+      const subject = v.str(b.subject, "Subject", 250);
+      const bodyText = v.str(b.body, "Body", 20000);
+      const toEmail = v.email(b.to);
+
+      const userRow = (
+        await q.query(
+          "SELECT id, name, email, email_settings FROM users WHERE id=$1 AND tenant_id=$2",
+          [u.sub, u.tenantId],
+        )
+      ).rows[0];
+
+      const settings = userRow?.email_settings || {};
+      const fromName = settings.senderName || userRow?.name || "Sales Representative";
+      const fromEmail = settings.senderEmail || userRow?.email;
+
+      let userSmtp: any = undefined;
+      if (settings.smtpHost && settings.smtpUser && settings.smtpPass) {
+        userSmtp = {
+          host: settings.smtpHost,
+          port: Number(settings.smtpPort) || 587,
+          secure: !!settings.smtpSecure,
+          user: settings.smtpUser,
+          pass: this.crypto.decrypt(settings.smtpPass),
+        };
+      }
+
+      const result = await this.mail.sendDirectLeadEmail({
+        to: toEmail,
+        fromName,
+        fromEmail,
+        replyTo: fromEmail,
+        subject,
+        bodyText,
+        userSmtp,
+      });
+
+      const act = (
+        await q.query(
+          `INSERT INTO activities(tenant_id, lead_id, user_id, type, body, metadata, occurred_at)
+           VALUES($1, $2, $3, 'email', $4, $5, now()) RETURNING *`,
+          [
+            u.tenantId,
+            leadId,
+            u.sub,
+            `Subject: ${subject}\n\n${bodyText}`,
+            JSON.stringify({
+              subject,
+              to: toEmail,
+              from: fromEmail,
+              transport: result.transport,
+              simulated: result.simulated,
+            }),
+          ],
+        )
+      ).rows[0];
+
+      await q.query(
+        "UPDATE leads SET last_activity_at=now(), updated_at=now() WHERE id=$1 AND tenant_id=$2",
+        [leadId, u.tenantId],
+      );
+
+      await q.query(
+        "DELETE FROM lead_email_drafts WHERE tenant_id=$1 AND lead_id=$2 AND user_id=$3",
+        [u.tenantId, leadId, u.sub],
+      );
+
+      return {
+        ok: true,
+        activity: act,
+        simulated: result.simulated,
+        transport: result.transport,
+      };
     });
   }
 }

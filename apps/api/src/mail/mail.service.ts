@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+﻿import { Injectable, Logger, BadRequestException } from "@nestjs/common";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import * as nodemailer from "nodemailer";
 
@@ -134,5 +134,121 @@ export class MailService {
         <a href="${BASE_URL}/tasks" style="display:inline-block;background:#d97706;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0">View Tasks</a>
       </div>`,
     );
+  }
+
+  async sendDirectLeadEmail({
+    to,
+    fromName,
+    fromEmail,
+    replyTo,
+    subject,
+    bodyText,
+    userSmtp,
+  }: {
+    to: string;
+    fromName?: string;
+    fromEmail?: string;
+    replyTo?: string;
+    subject: string;
+    bodyText: string;
+    userSmtp?: {
+      host: string;
+      port: number;
+      secure?: boolean;
+      user: string;
+      pass: string;
+    };
+  }): Promise<{ messageId?: string; simulated: boolean; transport: string }> {
+    const escaped = bodyText
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    const formattedHtml = `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.6;color:#1e293b;max-width:600px;margin:20px 0;"><p style="margin:0 0 16px 0;">${escaped.replace(/\n\n/g, "</p><p style=\"margin:16px 0;\">").replace(/\n/g, "<br/>")}</p></div>`;
+
+    if (userSmtp && userSmtp.host && userSmtp.user && userSmtp.pass) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: userSmtp.host,
+          port: userSmtp.port || 587,
+          secure: userSmtp.secure ?? (userSmtp.port === 465),
+          auth: {
+            user: userSmtp.user,
+            pass: userSmtp.pass,
+          },
+        });
+        const sender = fromName ? `"${fromName}" <${fromEmail || userSmtp.user}>` : (fromEmail || userSmtp.user);
+        const info = await transporter.sendMail({
+          from: sender,
+          to,
+          replyTo: replyTo || fromEmail || userSmtp.user,
+          subject,
+          text: bodyText,
+          html: formattedHtml,
+        });
+        return { messageId: info.messageId, simulated: false, transport: "custom_smtp" };
+      } catch (err: any) {
+        this.logger.error(`[MAIL] Failed to send via user SMTP: ${err.message}`);
+        throw new BadRequestException(`Failed to send email via your SMTP settings: ${err.message}`);
+      }
+    }
+
+    if (this.ses) {
+      const sender = fromName ? `"${fromName}" <${FROM}>` : FROM;
+      const res = await this.ses.send(
+        new SendEmailCommand({
+          Source: sender,
+          Destination: { ToAddresses: [to] },
+          ReplyToAddresses: replyTo || fromEmail ? [replyTo || fromEmail!] : undefined,
+          Message: {
+            Subject: { Data: subject },
+            Body: {
+              Text: { Data: bodyText },
+              Html: { Data: formattedHtml },
+            },
+          },
+        }),
+      );
+      return { messageId: res.MessageId, simulated: false, transport: "ses" };
+    }
+
+    if (this.smtp) {
+      const sender = fromName ? `"${fromName}" <${FROM}>` : FROM;
+      const info = await this.smtp.sendMail({
+        from: sender,
+        to,
+        replyTo: replyTo || fromEmail,
+        subject,
+        text: bodyText,
+        html: formattedHtml,
+      });
+      return { messageId: info.messageId, simulated: false, transport: "platform_smtp" };
+    }
+
+    this.logger.log(`[MAIL - SIMULATED] Sent lead email to ${to} [Subject: ${subject}]:\n${bodyText}`);
+    return { simulated: true, transport: "simulated" };
+  }
+
+  async testSmtpConnection(smtp: {
+    host: string;
+    port: number;
+    secure?: boolean;
+    user: string;
+    pass: string;
+  }): Promise<{ success: boolean; message?: string }> {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtp.host,
+        port: smtp.port || 587,
+        secure: smtp.secure ?? (smtp.port === 465),
+        auth: {
+          user: smtp.user,
+          pass: smtp.pass,
+        },
+      });
+      await transporter.verify();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, message: err.message };
+    }
   }
 }

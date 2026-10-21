@@ -17,6 +17,7 @@ export async function database() {
     "005-mfa.sql",
     "006-webhooks.sql",
     "007-tags.sql",
+    "008-user-email-settings.sql",
   ];
   for (const m of migrations) {
     const sql = readFileSync(resolve(process.cwd(), "db/migrations", m), "utf8");

@@ -23,6 +23,8 @@ import {
   useResource,
 } from "../../../../components/UI";
 import LeadForm from "../../../../components/LeadForm";
+import EmailModal from "../../../../components/EmailModal";
+
 export default function LeadDetail({
   params,
 }: {
@@ -37,10 +39,13 @@ export default function LeadDetail({
     [type, setType] = useState("note"),
     [busy, setBusy] = useState(false),
     [confirm, setConfirm] = useState(false),
-    [tagsModal, setTagsModal] = useState(false);
+    [tagsModal, setTagsModal] = useState(false),
+    [emailModal, setEmailModal] = useState(false);
+
   if (!data) return error ? <Notice message={error} /> : <Loading />;
   const [l, pipes, users, allTags] = data,
     stages = pipes.find((p: any) => p.id === l.pipeline_id)?.stages || [];
+
   return (
     <>
       <Link href="/leads" className="text-link">
@@ -52,6 +57,12 @@ export default function LeadDetail({
         description={l.company || "Individual contact"}
         actions={
           <>
+            {can(currentUser(), "lead.write") && (
+              <button className="btn" onClick={() => setEmailModal(true)}>
+                <Mail size={13} />
+                Send email
+              </button>
+            )}
             {can(currentUser(), "lead.write") && (
               <button className="btn ghost" onClick={() => setEdit(true)}>
                 <Pencil size={13} />
@@ -200,12 +211,13 @@ export default function LeadDetail({
             {l.activities.map((a: any) => (
               <div className="activity" key={a.id}>
                 <Avatar name={a.user_name || "Lead2"} small />
-                <div>
-                  <p>{a.body}</p>
+                <div style={{ flex: 1 }}>
+                  <p style={{ whiteSpace: "pre-wrap" }}>{a.body}</p>
                   <small>
                     {a.user_name || "Lead2 Engineer"} ·{" "}
                     {a.type.replaceAll("_", " ")} ·{" "}
                     {new Date(a.occurred_at).toLocaleString()}
+                    {a.metadata?.simulated && " · (demo simulated)"}
                   </small>
                 </div>
               </div>
@@ -217,7 +229,19 @@ export default function LeadDetail({
             <h2>Contact information</h2>
             <div className="stat-line">
               <span>Email</span>
-              <b>{l.email || "—"}</b>
+              <div className="row" style={{ gap: 6 }}>
+                <b>{l.email || "—"}</b>
+                {l.email && can(currentUser(), "lead.write") && (
+                  <button
+                    className="icon-btn"
+                    style={{ padding: 2 }}
+                    title="Send email to this contact"
+                    onClick={() => setEmailModal(true)}
+                  >
+                    <Mail size={13} />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="stat-line">
               <span>Phone</span>
@@ -341,6 +365,15 @@ export default function LeadDetail({
             <button className="btn" onClick={() => setTagsModal(false)}>Done</button>
           </div>
         </Modal>
+      )}
+      {emailModal && (
+        <EmailModal
+          lead={l}
+          onClose={() => setEmailModal(false)}
+          onSuccess={async () => {
+            await reload();
+          }}
+        />
       )}
     </>
   );

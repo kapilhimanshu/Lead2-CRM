@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from "@nestjs/common";
 import { AuthGuard } from "../common/auth.guard";
@@ -25,6 +26,15 @@ export class UsersController {
   }
   @Get("audit") audit(@CurrentUser() u: any) {
     return this.svc.audit(u);
+  }
+  @Get("me/email-settings") getEmailSettings(@CurrentUser() u: any) {
+    return this.svc.getEmailSettings(u);
+  }
+  @Put("me/email-settings") updateEmailSettings(@CurrentUser() u: any, @Body() b: any) {
+    return this.svc.updateEmailSettings(u, b);
+  }
+  @Post("me/email-settings/test") testEmailSettings(@CurrentUser() u: any, @Body() b: any) {
+    return this.svc.testEmailSettings(u, b);
   }
   @Post() create(@CurrentUser() u: any, @Body() b: any) {
     return this.svc.create(u, b);
