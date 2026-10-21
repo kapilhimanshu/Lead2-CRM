@@ -1,14 +1,15 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRight, ShieldCheck } from "lucide-react";
-import { api, signIn } from "../lib/api";
+import { ArrowRight } from "lucide-react";
+import { signIn } from "../lib/api";
 import { Field, Notice } from "./UI";
+
 export function Logo() {
   return (
     <Link href="/login" className="brand">
       <span className="brand-mark">
-        L<span>2</span>
+        <img src="/logo.png" alt="Lead2 CRM" className="brand-logo-img" />
       </span>
       <span>
         Lead2<span className="brand-crm">CRM</span>
@@ -16,6 +17,7 @@ export function Logo() {
     </Link>
   );
 }
+
 export function AuthFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="auth">
@@ -24,6 +26,21 @@ export function AuthFrame({ children }: { children: React.ReactNode }) {
         <div className="auth-story-content">
           <div className="auth-pill">
             <span className="live-dot" />A little clarity. A lot of possibility.
+          </div>
+          <div style={{ margin: "18px 0" }}>
+            <img
+              src="/logo.png"
+              alt="Lead2 CRM Mascot"
+              style={{
+                width: "120px",
+                height: "120px",
+                objectFit: "contain",
+                borderRadius: "20px",
+                background: "#ffffff",
+                padding: "8px",
+                boxShadow: "0 12px 28px rgba(0,0,0,0.22)",
+              }}
+            />
           </div>
           <h1>
             Build relationships.
@@ -49,10 +66,12 @@ export function AuthFrame({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
 export default function AuthPage({ platform = false }: { platform?: boolean }) {
   const [f, setF] = useState({ tenantSlug: "", email: "", password: "" }),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+
   async function submit(e: any) {
     e.preventDefault();
     setBusy(true);
@@ -70,6 +89,7 @@ export default function AuthPage({ platform = false }: { platform?: boolean }) {
       setBusy(false);
     }
   }
+
   return (
     <AuthFrame>
       <div className="authbox">

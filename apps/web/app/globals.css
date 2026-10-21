@@ -1628,3 +1628,21 @@ textarea.input {
     print-color-adjust: exact !important;
   }
 }
+
+/* Official Lead2 Logo Styling */
+.brand-mark {
+  width: 40px !important;
+  height: 40px !important;
+  background: #ffffff !important;
+  border: 1px solid var(--line, #e2e8f0);
+  padding: 2px;
+  overflow: hidden;
+  border-radius: 10px !important;
+}
+.brand-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  border-radius: 8px;
+}

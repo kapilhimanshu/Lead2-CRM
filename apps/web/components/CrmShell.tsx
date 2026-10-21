@@ -96,7 +96,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
       <aside className={`sidebar ${open ? "opened" : ""}`}>
         <Link className="brand" href="/dashboard">
           <span className="brand-mark">
-            L<span>2</span>
+            <img src="/logo.png" alt="Lead2 CRM" className="brand-logo-img" />
           </span>
           <span>
             Lead2<span className="brand-crm">CRM</span>
